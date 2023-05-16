@@ -1,0 +1,38 @@
+
+// # First Stage: Here in the first stage i'm pulling the whole source code from github 
+// # Second Stage : In second stage is the build stage where i'm building the docker image from the Dockerfile which will be present in the source code
+// # Third Stage: At Third stage i'm pushing the docker image to the dockerhub which is public docker repository
+// # Last stage : Here i used a plugin called sshAgent, In which i configured the ec2-instance credentials usng username and public key.
+// After that i copied docker-compose file to ec2-instance and executed using the docker-compose up command
+
+node {
+    stage("git checkout"){
+        git 'https://github.com/pran2711/<Repo-Name>.git'
+    }
+    
+    stage("build docker file and tagging"){
+        sh 'docker image build -t $JOB_NAME:v1.$BUILD_ID .'
+        sh 'docker image tag $JOB_NAME:v1.$BUILD_ID docops27/$JOB_NAME:v1.$BUILD_ID'
+        sh 'docker image tag $JOB_NAME:v1.$BUILD_ID docops27/$JOB_NAME:latest'
+    }
+    
+    stage("login and push image to dockerhub"){
+       withCredentials([string(credentialsId: 'docker_login', variable: 'docker_login')]) {
+     sh 'docker login -u docops27 -p ${docker_login}'
+     sh 'docker image push  docops27/$JOB_NAME:v1.$BUILD_ID'
+     sh 'docker image push docops27/$JOB_NAME:latest'
+   } 
+    }
+    
+    
+  stage("copying docker compose file and executing it on ec2 instance"){
+      sshagent(['ec2-instance']) {
+    sh 'ssh -o StrictHostKeyChecking=no ec2-user@<Instance-Private-IP> cd /home/ec2-user'
+    sh 'scp -r /var/lib/jenkins/workspace/<Pipeline-Name>/docker_compose.yml ec2-user@<Instance-Private-IP>:/home/ec2-user'
+    sh 'ssh -o StrictHostKeyChecking=no ec2-user@<Instance-Private-IP> dokcer-compose -f docker_compose.yml up -d'
+}
+  }
+    
+   
+}
+   
